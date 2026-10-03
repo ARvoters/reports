@@ -1,0 +1,46 @@
+name: Deploy Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build site (copyright year computed at build time)
+        run: |
+          set -euo pipefail
+          mkdir _site
+          cp index.html robots.txt CNAME _site/
+          find . -maxdepth 1 -regextype posix-extended -regex './[0-9a-f]{32}\.txt' -exec cp {} _site/ \;
+          test "$(ls _site/*.txt | wc -l)" -eq 2
+          YEAR=$(TZ=America/Chicago date +%Y)
+          sed -i "s/__YEAR__/${YEAR}/" _site/index.html
+          if grep -q '__YEAR__' _site/index.html; then echo "year not substituted"; exit 1; fi
+          ls -la _site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
